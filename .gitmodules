@@ -1,0 +1,6 @@
+[submodule "libserialport"]
+	path = libserialport
+	url = git://sigrok.org/libserialport
+[submodule "c11threads"]
+	path = c11threads
+	url = https://github.com/jtsiomb/c11threads.git

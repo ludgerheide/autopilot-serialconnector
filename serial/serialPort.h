@@ -8,5 +8,7 @@
 #endif //FLIGHTMANAGER_SERIALPORT_H
 
 void initSerial();
+
 void addSerialSubscriber();
+
 void removeSerialSubscriber();

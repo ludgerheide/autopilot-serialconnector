@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <memory.h>
 #include <stdio.h>
+#include <assert.h>
 
 static const char *databaseFileName = "flightLogs.sqlite";
 static sqlite3 *db = NULL;
@@ -71,15 +72,7 @@ int initDatabase(void) {
     int retVal = sqlite3_open(databaseFileName, &db);
     assert(db != NULL && retVal == SQLITE_OK);
 
-    char *error = NULL;
-    retVal = sqlite3_exec(db, createDatabaseCommand, NULL, NULL, &error);
-    if (retVal != SQLITE_OK || error != NULL) {
-        syslog(LOG_ERR, "Creating sqlite tables failed: %s, %s", error, sqlite3_errmsg(db));
-        sqlite3_free(error);
-        return -1;
-    }
-
-    error = NULL;
+    char* error = NULL;
     retVal = sqlite3_exec(db, connectionPragmaCommand, NULL, NULL, &error);
     if (retVal != SQLITE_OK || error != NULL) {
         syslog(LOG_ERR, "Setting connection properties failed: %s, %s", error, sqlite3_errmsg(db));
@@ -87,6 +80,13 @@ int initDatabase(void) {
         return -1;
     }
 
+    error = NULL;
+    retVal = sqlite3_exec(db, createDatabaseCommand, NULL, NULL, &error);
+    if (retVal != SQLITE_OK || error != NULL) {
+        syslog(LOG_ERR, "Creating sqlite tables failed: %s, %s", error, sqlite3_errmsg(db));
+        sqlite3_free(error);
+        return -1;
+    }
 
     return 0;
 }
@@ -102,6 +102,6 @@ void deinitDatabase(void) {
 static int selectFlightIdCallback(void *NotUsed, int argc, char **argv, char **azColName) {
     assert(argc == 1);
     flightId = atoi(argv[0]);
-    assert(flightId > 1);
+    assert(flightId >= 1);
     return 0;
 }

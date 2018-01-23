@@ -38,7 +38,8 @@ add_library(libserialport STATIC  libserialport/serialport.c libserialport/linux
 target_include_directories(libserialport PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/libserialport)
 
 #The main executable
-add_executable(flightManager main.c protobuf/communicationProtocol.pb-c.c serial/serialPort.c)
+add_executable(flightManager main.c protobuf/communicationProtocol.pb-c.c serialPort.c database.c database.h databaseCommands.h)
 add_dependencies(flightManager createProtobuf)
 find_library (PROTOBUF-C protobuf-c ${CROSS_TOOLCHAIN_PATH}/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/arm-linux-gnueabihf/sysroot/usr/lib/arm-linux-gnueabihf)
-target_link_libraries(flightManager ${PROTOBUF-C} m libserialport pthread)
+find_library(SQLITE3 sqlite3 ${CROSS_TOOLCHAIN_PATH}/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/arm-linux-gnueabihf/sysroot/usr/lib/arm-linux-gnueabihf)
+target_link_libraries(flightManager ${PROTOBUF-C} m libserialport pthread ${SQLITE3})

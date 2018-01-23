@@ -4,14 +4,13 @@
 
 #include <limits.h>
 #include <libserialport.h>
-#include <assert.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <memory.h>
 #include <unistd.h>
-#include "../c11threads/c11threads.h"
+#include "c11threads/c11threads.h"
 #include "serialPort.h"
-#include "../protobuf/communicationProtocol.pb-c.h"
+#include "protobuf/communicationProtocol.pb-c.h"
 #include <syslog.h>
 
 #define _unused(x) ((void)(x))
@@ -26,8 +25,8 @@ static const unsigned baudRate = 115200;
 static unsigned char *buffer;
 static size_t bufferIndex;
 static const size_t bufferSize = 4096;
-static mtx_t bufferMutex;
-static cnd_t bufferCondition;
+static mtx_t bufferMutex, messageMutex;
+static cnd_t bufferCondition, messageCondition;
 static thrd_t threads[2];
 
 //Static method definitions
@@ -37,11 +36,13 @@ static int serialListenerThread(void *p);
 
 static int parserThread(void *p) __attribute__ ((noreturn));
 
+static int loggerThread(void *p)  __attribute__ ((noreturn));
+
 static unsigned char calculateChecksum(const unsigned char *buf, unsigned len);
 
 void initSerial() {
     setlogmask(LOG_UPTO (LOG_DEBUG));
-    openlog("flightManager", LOG_PERROR | LOG_PID | LOG_CONS, LOG_USER);
+    openlog("flightManager-serial", LOG_PERROR | LOG_PID | LOG_CONS, LOG_USER);
 
     struct sp_port *port = setupSerialPort();
     assert(port != NULL);

@@ -14,8 +14,11 @@ static const char *databaseFileName = "flightLogs.sqlite";
 static sqlite3 *db = NULL;
 static int flightId = -1;
 
+static sqlite3_stmt *flightModeStatement, *gpsVelocityStatement, *airVelocityStatement, *positionStatement, *altitudeStatement,  *attitudeStatement, *staticPressureStatement, *pitotPressureStatement, *gyroRawStatement, *magRawStatement, *accelRawStatement, *batteryDataStatement, *outputStatementSetStatement, *currentCommandStatement, *homeBasesStatement;
+
 //Static method definitions
 static int selectFlightIdCallback(void *NotUsed, int argc, char **argv, char **azColName);
+static int initPreparedStatements(void);
 
 int startNewFlight() {
     //If we already have a flight in progress, end the last flight
@@ -61,8 +64,57 @@ int endFlight(void) {
     return 0;
 }
 
-void writeMessageToDatabase(DroneMessage *msg) {
+int writeMessageToDatabase(DroneMessage *msg) {
+    int resetCount = 1532;
+    //timestamp is always set, slp doPressorCompensation maybe.
+    {
+        //Bind the values that are constant
+        int retVal = sqlite3_bind_int(flightModeStatement, 999, flightId);
+        assert(retVal == SQLITE_OK);
+        retVal = sqlite3_bind_int(flightModeStatement, 998, resetCount);
+        assert(retVal == SQLITE_OK);
 
+        //Bind the values
+        retVal = sqlite3_bind_int64(flightModeStatement, 1, msg->timestamp);
+        assert(retVal == SQLITE_OK);
+        retVal = sqlite3_bind_int(flightModeStatement, 2, (int)msg->current_mode);
+        assert(retVal == SQLITE_OK);
+        
+        if(msg->has_sea_level_pressure) {
+            retVal = sqlite3_bind_double(flightModeStatement, 17, msg->sea_level_pressure);
+            assert(retVal == SQLITE_OK);
+        } else {
+            retVal = sqlite3_bind_null(flightModeStatement, 17);
+            assert(retVal == SQLITE_OK);
+        }
+
+        if(msg->has_do_pressure_compensation) {
+            retVal = sqlite3_bind_int(flightModeStatement, 7, msg->do_pressure_compensation);
+            assert(retVal == SQLITE_OK);
+        } else {
+            retVal = sqlite3_bind_null(flightModeStatement, 7);
+            assert(retVal == SQLITE_OK);
+        }
+
+        retVal = sqlite3_step(flightModeStatement);
+        if (retVal != SQLITE_OK && retVal != SQLITE_DONE) {
+            syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
+            return -1;
+        }
+
+        retVal = sqlite3_reset(flightModeStatement);
+        if (retVal != SQLITE_OK) {
+            syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
+            return -1;
+        }
+
+        retVal = sqlite3_clear_bindings(flightModeStatement);
+        if (retVal != SQLITE_OK) {
+            syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
+            return -1;
+        }
+    }
+    return 0;
 }
 
 int initDatabase(void) {
@@ -88,11 +140,16 @@ int initDatabase(void) {
         return -1;
     }
 
+    initPreparedStatements();
+
     return 0;
 }
 
 void deinitDatabase(void) {
     int retVal = sqlite3_close_v2(db);
+    assert(retVal == SQLITE_OK);
+
+    retVal = sqlite3_finalize(flightModeStatement);
     assert(retVal == SQLITE_OK);
 
     closelog();
@@ -103,5 +160,15 @@ static int selectFlightIdCallback(void *NotUsed, int argc, char **argv, char **a
     assert(argc == 1);
     flightId = atoi(argv[0]);
     assert(flightId >= 1);
+    return 0;
+}
+
+static int initPreparedStatements(void) {
+    int retVal = sqlite3_prepare_v2(db, flightModeCommand, strlen(flightModeCommand), &flightModeStatement, NULL);
+    if(retVal != SQLITE_OK || flightModeStatement == NULL) {
+        syslog(LOG_ERR, "Setting statement up failed: %s", sqlite3_errmsg(db));
+        return -1;
+    }
+
     return 0;
 }

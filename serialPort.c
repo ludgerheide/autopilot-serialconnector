@@ -3,31 +3,45 @@
 //
 
 #include <limits.h>
+#ifndef __APPLE__
 #include <libserialport.h>
+#else
+#include <stdio.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#endif
 #include <stdlib.h>
 #include <stdbool.h>
 #include <memory.h>
 #include <unistd.h>
 #include "c11threads/c11threads.h"
 #include "serialPort.h"
+#include "database.h"
 #include "protobuf/communicationProtocol.pb-c.h"
 #include <syslog.h>
 
 #define _unused(x) ((void)(x))
+
+struct msgInfo {
+    DroneMessage *msg;
+    unsigned resetCount;
+};
 
 //Constants
 static const unsigned timeout = 1000;
 static const char startMarker[5] = {'s', 't', 'a', 'r', 't'};
 static const char *serialPortName = "/dev/ttyAMA0";
 static const unsigned baudRate = 115200;
+static const size_t bufferSize = 4096;
 
 //Threading and buffer variables
 static unsigned char *buffer;
 static size_t bufferIndex;
-static const size_t bufferSize = 4096;
-static mtx_t bufferMutex, messageMutex;
-static cnd_t bufferCondition, messageCondition;
+static mtx_t bufferMutex, databaseMutex;
+static cnd_t bufferCondition;
 static thrd_t threads[2];
+_Atomic int waitingWrites = 0;
 
 //Static method definitions
 static struct sp_port *setupSerialPort();
@@ -36,7 +50,7 @@ static int serialListenerThread(void *p);
 
 static int parserThread(void *p) __attribute__ ((noreturn));
 
-static int loggerThread(void *p)  __attribute__ ((noreturn));
+static int loggerThread(void *p);
 
 static unsigned char calculateChecksum(const unsigned char *buf, unsigned len);
 
@@ -44,14 +58,22 @@ void initSerial() {
     setlogmask(LOG_UPTO (LOG_DEBUG));
     openlog("flightManager-serial", LOG_PERROR | LOG_PID | LOG_CONS, LOG_USER);
 
+#ifndef __APPLE__
     struct sp_port *port = setupSerialPort();
     assert(port != NULL);
+#else
+    struct sp_port *port = NULL;
+#endif
 
     buffer = malloc(bufferSize);
     assert(buffer != NULL);
     bufferIndex = 0;
 
     int mutexInitialized = mtx_init(&bufferMutex, mtx_plain);
+    assert(mutexInitialized == thrd_success);
+    _unused(mutexInitialized);
+
+    mutexInitialized = mtx_init(&databaseMutex, mtx_plain);
     assert(mutexInitialized == thrd_success);
     _unused(mutexInitialized);
 
@@ -68,14 +90,17 @@ void initSerial() {
 
     cnd_destroy(&bufferCondition);
 
+    mtx_destroy(&databaseMutex);
+
     mtx_destroy(&bufferMutex);
 
     free(buffer);
 
+#ifndef __APPLE__
     enum sp_return closedSuccess = sp_close(port);
     assert(closedSuccess == SP_OK);
     _unused(closedSuccess);
-
+#endif
     closelog();
 }
 
@@ -87,6 +112,7 @@ void removeSerialSubscriber() {
 
 }
 
+#ifndef __APPLE__
 static struct sp_port *setupSerialPort() {
     struct sp_port *port;
 
@@ -108,15 +134,24 @@ static struct sp_port *setupSerialPort() {
 
     return port;
 }
+#endif
 
 static int serialListenerThread(void *p) {
     struct sp_port *restrict port = p;
     int port_fd, result;
     fd_set readset;
+#ifndef __APPLE__
     enum sp_return gotPortHandle = sp_get_port_handle(port, &port_fd);
     if (gotPortHandle != SP_OK) {
         return -1;
     }
+#else
+    port_fd = open("/Users/ludger/Desktop/recived3.raw", O_RDONLY);
+    if(port_fd < 0) {
+        perror("Error opening file");
+    }
+    assert(port_fd>0);
+#endif
 
     while (1) {
         do {
@@ -141,6 +176,9 @@ static int serialListenerThread(void *p) {
                     int bytesRead = read(port_fd, &buffer[bufferIndex], available_space);
                     if (bytesRead <= 0) {
                         syslog(LOG_ERR, "Error reading, code %i!\n", bytesRead);
+                        while (waitingWrites > 0) {
+                            usleep(1000);
+                        }
                         return -1;
                     } else {
                         bufferIndex += bytesRead;
@@ -167,9 +205,13 @@ enum parserStatus {
 static int parserThread(void *p) {
     _unused(p);
     unsigned char dataLength = 0;
-    unsigned char *msgBuf;
+    unsigned char *msgBuf = NULL;
     bool newMessageAvailable = false;
     enum parserStatus status = WAITING_FOR_START;
+
+    //Flight management stuff for the database
+    uint64_t lastTimestamp = 0;
+    unsigned int resetCount = 1;
 
     while (true) {
         mtx_lock(&bufferMutex);
@@ -240,11 +282,45 @@ static int parserThread(void *p) {
             if (decodedMessage == NULL) {
                 syslog(LOG_INFO, "Error decoding protobuf message");
             } else {
-                // Free the unpacked message
-                drone_message__free_unpacked(decodedMessage, NULL);
+                //Check if we had a reset, if yes increment resetCount
+                if(decodedMessage->timestamp < lastTimestamp) {
+                    resetCount++;
+                }
+                lastTimestamp = decodedMessage->timestamp;
+
+                //Start the logger
+                struct msgInfo* info = malloc(sizeof(struct msgInfo));
+                info->resetCount = resetCount;
+                info->msg = decodedMessage;
+
+                thrd_t myLoggerThread;
+                thrd_create(&myLoggerThread, loggerThread, info);
+                thrd_detach(myLoggerThread);
             }
         }
     }
+}
+
+static int loggerThread(void *p) {
+    waitingWrites++;
+    if(waitingWrites > 10) {
+        syslog(LOG_WARNING, "%d messages waiting to be written to database", waitingWrites);
+    }
+
+    //Get the info passed to us and free it
+    struct msgInfo *restrict msgInfo = p;
+    unsigned int myResetCount = msgInfo->resetCount;
+    DroneMessage *msg = msgInfo->msg;
+    free(msgInfo);
+
+    //We use a message mutex so no unsafe acesses are done to the prepared statements. The alternative would be to make them thread-local
+    mtx_lock(&databaseMutex);
+    writeMessageToDatabase(msg, myResetCount);
+    mtx_unlock(&databaseMutex);
+
+    waitingWrites--;
+    drone_message__free_unpacked(msg, NULL);
+    return 0;
 }
 
 static unsigned char calculateChecksum(const unsigned char *buf, unsigned len) {

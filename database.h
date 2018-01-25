@@ -12,7 +12,7 @@ int startNewFlight();
 
 int endFlight(void);
 
-int writeMessageToDatabase(DroneMessage *msg);
+int writeMessageToDatabase(DroneMessage *msg, unsigned resetCount);
 
 int initDatabase(void);
 

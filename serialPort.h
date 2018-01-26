@@ -5,10 +5,13 @@
 #ifndef FLIGHTMANAGER_SERIALPORT_H
 #define FLIGHTMANAGER_SERIALPORT_H
 
-#endif //FLIGHTMANAGER_SERIALPORT_H
+
+extern const char* navigationQueueName;
 
 void initSerial();
 
 void addSerialSubscriber();
 
 void removeSerialSubscriber();
+
+#endif //FLIGHTMANAGER_SERIALPORT_H

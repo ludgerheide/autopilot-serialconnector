@@ -8,6 +8,8 @@
 #include <sqlite3.h>
 #include "protobuf/communicationProtocol.pb-c.h"
 
+extern const char* databaseWriterQueueName;
+
 int startNewFlight();
 
 int endFlight(void);

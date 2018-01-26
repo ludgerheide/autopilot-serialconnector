@@ -201,7 +201,7 @@ const char *createDatabaseCommand = "CREATE TABLE IF NOT EXISTS flights\n"
         ");";
 
 const char *connectionPragmaCommand = "PRAGMA journal_mode = WAL;\n"
-        "PRAGMA synchronous = NORMAL;";
+        "PRAGMA synchronous = OFF;";
 
 const char *startNewFlightCommand = "INSERT INTO flights (start) VALUES (datetime('now'));";
 
@@ -235,8 +235,8 @@ const char *currentCommandCommand = "INSERT INTO CurrentCommand (FlightId, Reset
 
 const char *homeBasesCommand = "INSERT INTO HomeBases (FlightId, ResetCount, Timestamp, Latitude, Longitude, Altitude, OrbitRadius, OrbitUntilTargetAltitude, OrbitClockwise) VALUES (?999, ?998,?200, ?201, ?202, ?203, ?204, ?205, ?206);";
 
-const char *beginTransactionCommand = "BEGIN TRANSACTION";
+const char *beginTransactionCommand = "BEGIN TRANSACTION;";
 
-const char *endTransactionCommand = "END TRANSACTION";
+const char *endTransactionCommand = "END TRANSACTION;";
 
 #endif //FLIGHTMANAGER_DATABASECOMMANDS_H

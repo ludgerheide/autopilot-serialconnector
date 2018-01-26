@@ -3,7 +3,11 @@
 //
 
 #include <limits.h>
-#ifndef __APPLE__
+#include <fcntl.h>           /* For O_* constants */
+#include <sys/stat.h>        /* For mode constants */
+#include <mqueue.h>
+#include <math.h>
+#ifndef SIMULATE_SERIAL_PORT
 #include <libserialport.h>
 #else
 #include <stdio.h>
@@ -20,6 +24,7 @@
 #include "database.h"
 #include "protobuf/communicationProtocol.pb-c.h"
 #include <syslog.h>
+#include <sys/param.h>
 
 #define _unused(x) ((void)(x))
 
@@ -34,21 +39,24 @@ static const char startMarker[5] = {'s', 't', 'a', 'r', 't'};
 static const char *serialPortName = "/dev/ttyAMA0";
 static const unsigned baudRate = 115200;
 static const size_t bufferSize = 4096;
+const char* navigationQueueName = "/navQueue";
+static const struct mq_attr databaseQueueAttributes = {.mq_maxmsg=10, .mq_msgsize=1024};
 
 //Threading and buffer variables
 static unsigned char *buffer;
 static size_t bufferIndex;
-static mtx_t bufferMutex, databaseMutex;
+static mtx_t bufferMutex;
 static cnd_t bufferCondition;
-static thrd_t threads[2];
-_Atomic int waitingWrites = 0;
+static thrd_t threads[3];
+_Atomic bool parserThreadShouldExit;
+_Atomic bool loggerThreadShouldExit;
 
 //Static method definitions
 static struct sp_port *setupSerialPort();
 
 static int serialListenerThread(void *p);
 
-static int parserThread(void *p) __attribute__ ((noreturn));
+static int parserThread(void *p);
 
 static int loggerThread(void *p);
 
@@ -58,7 +66,7 @@ void initSerial() {
     setlogmask(LOG_UPTO (LOG_DEBUG));
     openlog("flightManager-serial", LOG_PERROR | LOG_PID | LOG_CONS, LOG_USER);
 
-#ifndef __APPLE__
+#ifndef SIMULATE_SERIAL_PORT
     struct sp_port *port = setupSerialPort();
     assert(port != NULL);
 #else
@@ -73,30 +81,36 @@ void initSerial() {
     assert(mutexInitialized == thrd_success);
     _unused(mutexInitialized);
 
-    mutexInitialized = mtx_init(&databaseMutex, mtx_plain);
-    assert(mutexInitialized == thrd_success);
-    _unused(mutexInitialized);
-
     int conditionInitialized = cnd_init(&bufferCondition);
     assert(conditionInitialized == thrd_success);
     _unused(conditionInitialized);
 
+    parserThreadShouldExit = false;
+
+    loggerThreadShouldExit = false;
+
     //Here, start the main thread
     thrd_create(&threads[0], parserThread, NULL);
+    thrd_create(&threads[2], loggerThread, NULL);
     thrd_create(&threads[1], serialListenerThread, port);
 
     thrd_detach(threads[0]);
     thrd_join(threads[1], NULL);
 
-    cnd_destroy(&bufferCondition);
+    //Signal the parser thread to exit and wake it up
+    parserThreadShouldExit = true;
+    cnd_signal(&bufferCondition);
 
-    mtx_destroy(&databaseMutex);
+    loggerThreadShouldExit = true;
+    thrd_join(threads[2], NULL);
+
+    cnd_destroy(&bufferCondition);
 
     mtx_destroy(&bufferMutex);
 
     free(buffer);
 
-#ifndef __APPLE__
+#ifndef SIMULATE_SERIAL_PORT
     enum sp_return closedSuccess = sp_close(port);
     assert(closedSuccess == SP_OK);
     _unused(closedSuccess);
@@ -112,7 +126,7 @@ void removeSerialSubscriber() {
 
 }
 
-#ifndef __APPLE__
+#ifndef SIMULATE_SERIAL_PORT
 static struct sp_port *setupSerialPort() {
     struct sp_port *port;
 
@@ -140,13 +154,13 @@ static int serialListenerThread(void *p) {
     struct sp_port *restrict port = p;
     int port_fd, result;
     fd_set readset;
-#ifndef __APPLE__
+#ifndef SIMULATE_SERIAL_PORT
     enum sp_return gotPortHandle = sp_get_port_handle(port, &port_fd);
     if (gotPortHandle != SP_OK) {
         return -1;
     }
 #else
-    port_fd = open("/Users/ludger/Desktop/recived3.raw", O_RDONLY);
+    port_fd = open("/home/ludger/Schreibtisch/recived3.raw.truncated", O_RDONLY);
     if(port_fd < 0) {
         perror("Error opening file");
     }
@@ -154,6 +168,12 @@ static int serialListenerThread(void *p) {
 #endif
 
     while (1) {
+#ifdef SIMULATE_SERIAL_PORT
+      //Sleep 4ms to simualte the msg delay
+        unsigned wait_time_ms = 40;
+        usleep(wait_time_ms * 1000);
+#endif
+
         do {
             //Wait at least 100 character times to save the cpu
             unsigned wait_time_us = 100 * (1000000 / (baudRate / 8));
@@ -176,10 +196,10 @@ static int serialListenerThread(void *p) {
                     int bytesRead = read(port_fd, &buffer[bufferIndex], available_space);
                     if (bytesRead <= 0) {
                         syslog(LOG_ERR, "Error reading, code %i!\n", bytesRead);
-                        while (waitingWrites > 0) {
-                            usleep(1000);
-                        }
                         return -1;
+#ifdef SIMULATE_SERIAL_PORT
+                        close(port_fd);
+#endif
                     } else {
                         bufferIndex += bytesRead;
                         if (bufferIndex >= 0.5 * bufferSize) {
@@ -209,16 +229,28 @@ static int parserThread(void *p) {
     bool newMessageAvailable = false;
     enum parserStatus status = WAITING_FOR_START;
 
-    //Flight management stuff for the database
-    uint64_t lastTimestamp = 0;
-    unsigned int resetCount = 1;
+    //Connect to the message queue
+    mqd_t databaseQueue = mq_open(databaseWriterQueueName, O_CREAT|O_WRONLY|O_NONBLOCK, 0666, &databaseQueueAttributes);
+    if(databaseQueue == -1) {
+        syslog(LOG_ERR, "Opening database send queue failed: %s", strerror(errno));
+        return -1;
+    }
 
     while (true) {
         mtx_lock(&bufferMutex);
         while ((status == WAITING_FOR_START && bufferIndex < sizeof(startMarker) + 1) ||
                (status == RECEIVING_DATA && bufferIndex < (unsigned) dataLength + 1)) {
-            cnd_wait(&bufferCondition, &bufferMutex);
+            struct timespec timeout;
+            timespec_get (&timeout , CLOCK_MONOTONIC );
+            timeout.tv_sec += 1;
+            cnd_timedwait(&bufferCondition, &bufferMutex, &timeout);
+
+            if(parserThreadShouldExit) {
+                mq_close(databaseQueue);
+                return 0;
+            }
         }
+
 
         //Parse the newly received data
         while (status == WAITING_FOR_START && bufferIndex >= sizeof(startMarker) + 1) {
@@ -277,50 +309,76 @@ static int parserThread(void *p) {
 
             //Now, just decode the message
             DroneMessage *decodedMessage = drone_message__unpack(NULL, dataLength, msgBuf);
-            free(msgBuf);
             newMessageAvailable = false;
             if (decodedMessage == NULL) {
                 syslog(LOG_INFO, "Error decoding protobuf message");
             } else {
-                //Check if we had a reset, if yes increment resetCount
-                if(decodedMessage->timestamp < lastTimestamp) {
-                    resetCount++;
+                int retVal = mq_send(databaseQueue, (void*)msgBuf, dataLength, 0);
+                if(retVal != 0) {
+                    struct mq_attr attr;
+                    mq_getattr(databaseQueue, &attr);
+                    syslog(LOG_WARNING, "Sending message to database queue failed with %lu messages in queue: %s", attr.mq_curmsgs, strerror(errno));
                 }
-                lastTimestamp = decodedMessage->timestamp;
-
-                //Start the logger
-                struct msgInfo* info = malloc(sizeof(struct msgInfo));
-                info->resetCount = resetCount;
-                info->msg = decodedMessage;
-
-                thrd_t myLoggerThread;
-                thrd_create(&myLoggerThread, loggerThread, info);
-                thrd_detach(myLoggerThread);
+                free(msgBuf);
+                drone_message__free_unpacked(decodedMessage, NULL);
             }
         }
     }
 }
 
 static int loggerThread(void *p) {
-    waitingWrites++;
-    if(waitingWrites > 10) {
-        syslog(LOG_WARNING, "%d messages waiting to be written to database", waitingWrites);
+    _unused(p);
+    //Connect to the message queue
+    mqd_t databaseQueue = mq_open(databaseWriterQueueName, O_CREAT|O_RDONLY, S_IWUSR|S_IRUSR, &databaseQueueAttributes);
+    if(databaseQueue == -1) {
+        syslog(LOG_ERR, "Opening database receive queue failed: %s", strerror(errno));
+        return -1;
     }
+    struct mq_attr attr;
+    mq_getattr(databaseQueue, &attr);
+    size_t msgBufSize = MAX((size_t)attr.mq_msgsize, bufferSize);
+    char* msgBuf = malloc(4096);
+    assert(msgBuf != NULL);
+    unsigned dataLength = 0;
+    unsigned resetCount = 1;
+    uint64_t lastTimestamp = 0;
 
-    //Get the info passed to us and free it
-    struct msgInfo *restrict msgInfo = p;
-    unsigned int myResetCount = msgInfo->resetCount;
-    DroneMessage *msg = msgInfo->msg;
-    free(msgInfo);
+    while (true) {
+        struct timespec timeout;
+        timespec_get(&timeout, CLOCK_MONOTONIC);
+        timeout.tv_sec += 1;
+        int retVal = mq_timedreceive(databaseQueue, msgBuf, msgBufSize, NULL, &timeout);
+        if(retVal > 0) {
+            dataLength = retVal;
+            DroneMessage *decodedMessage = drone_message__unpack(NULL, dataLength, (uint8_t*)msgBuf);
+            if (decodedMessage == NULL) {
+                syslog(LOG_INFO, "Error decoding protobuf message");
+            } else {
+                if(decodedMessage->timestamp < lastTimestamp) {
+                    resetCount++;
+                }
+                lastTimestamp = decodedMessage->timestamp;
+                writeMessageToDatabase(decodedMessage, resetCount);
+                drone_message__free_unpacked(decodedMessage, NULL);
+            }
+        } else {
+            struct mq_attr attr;
+            mq_getattr(databaseQueue, &attr);
+            syslog(LOG_ERR, "Receiving message failed (%lu messages in queue): %s", attr.mq_curmsgs, strerror(errno));
 
-    //We use a message mutex so no unsafe acesses are done to the prepared statements. The alternative would be to make them thread-local
-    mtx_lock(&databaseMutex);
-    writeMessageToDatabase(msg, myResetCount);
-    mtx_unlock(&databaseMutex);
-
-    waitingWrites--;
-    drone_message__free_unpacked(msg, NULL);
-    return 0;
+            if(loggerThreadShouldExit) {
+                struct mq_attr attr;
+                mq_getattr(databaseQueue, &attr);
+                if(attr.mq_curmsgs > 0 && errno != ETIMEDOUT) {
+                    syslog(LOG_WARNING, "Closing, still %lu messages in queue.", attr.mq_curmsgs);
+                } else {
+                    mq_close(databaseQueue);
+                    free(msgBuf);
+                    return 0;
+                }
+            }
+        }
+    }
 }
 
 static unsigned char calculateChecksum(const unsigned char *buf, unsigned len) {

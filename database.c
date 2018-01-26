@@ -11,6 +11,9 @@
 #include <assert.h>
 #include <math.h>
 
+#define _unused(x) ((void)(x))
+
+const char* databaseWriterQueueName = "/dbQueue";
 static const char *databaseFileName = "flightLogs.sqlite";
 static sqlite3 *db = NULL;
 static int flightId = -1;
@@ -72,6 +75,8 @@ int endFlight(void) {
 }
 
 int writeMessageToDatabase(DroneMessage *msg, unsigned resetCount) {
+    int functionReturn = 0;
+
     {//Start the transaction
         int retVal = sqlite3_step(beginTransactionStatement);
         if (retVal != SQLITE_OK && retVal != SQLITE_DONE) {
@@ -119,19 +124,19 @@ int writeMessageToDatabase(DroneMessage *msg, unsigned resetCount) {
         retVal = sqlite3_step(flightModeStatement);
         if (retVal != SQLITE_OK && retVal != SQLITE_DONE) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
 
         retVal = sqlite3_reset(flightModeStatement);
         if (retVal != SQLITE_OK) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
 
         retVal = sqlite3_clear_bindings(flightModeStatement);
         if (retVal != SQLITE_OK) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
     }
 
@@ -152,19 +157,19 @@ int writeMessageToDatabase(DroneMessage *msg, unsigned resetCount) {
         retVal = sqlite3_step(gpsVelocityStatement);
         if (retVal != SQLITE_OK && retVal != SQLITE_DONE) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
 
         retVal = sqlite3_reset(gpsVelocityStatement);
         if (retVal != SQLITE_OK) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
 
         retVal = sqlite3_clear_bindings(gpsVelocityStatement);
         if (retVal != SQLITE_OK) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
     }
 
@@ -182,19 +187,19 @@ int writeMessageToDatabase(DroneMessage *msg, unsigned resetCount) {
         retVal = sqlite3_step(airVelocityStatement);
         if (retVal != SQLITE_OK && retVal != SQLITE_DONE) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
 
         retVal = sqlite3_reset(airVelocityStatement);
         if (retVal != SQLITE_OK) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
 
         retVal = sqlite3_clear_bindings(airVelocityStatement);
         if (retVal != SQLITE_OK) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
     }
 
@@ -231,19 +236,19 @@ int writeMessageToDatabase(DroneMessage *msg, unsigned resetCount) {
         retVal = sqlite3_step(positionStatement);
         if (retVal != SQLITE_OK && retVal != SQLITE_DONE) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
 
         retVal = sqlite3_reset(positionStatement);
         if (retVal != SQLITE_OK) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
 
         retVal = sqlite3_clear_bindings(positionStatement);
         if (retVal != SQLITE_OK) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
     }
 
@@ -264,19 +269,19 @@ int writeMessageToDatabase(DroneMessage *msg, unsigned resetCount) {
         retVal = sqlite3_step(altitudeStatement);
         if (retVal != SQLITE_OK && retVal != SQLITE_DONE) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
 
         retVal = sqlite3_reset(altitudeStatement);
         if (retVal != SQLITE_OK) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
 
         retVal = sqlite3_clear_bindings(altitudeStatement);
         if (retVal != SQLITE_OK) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
     }
 
@@ -298,19 +303,19 @@ int writeMessageToDatabase(DroneMessage *msg, unsigned resetCount) {
         retVal = sqlite3_step(attitudeStatement);
         if (retVal != SQLITE_OK && retVal != SQLITE_DONE) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
 
         retVal = sqlite3_reset(attitudeStatement);
         if (retVal != SQLITE_OK) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
 
         retVal = sqlite3_clear_bindings(attitudeStatement);
         if (retVal != SQLITE_OK) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
     }
 
@@ -329,19 +334,19 @@ int writeMessageToDatabase(DroneMessage *msg, unsigned resetCount) {
         retVal = sqlite3_step(staticPressureStatement);
         if (retVal != SQLITE_OK && retVal != SQLITE_DONE) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
 
         retVal = sqlite3_reset(staticPressureStatement);
         if (retVal != SQLITE_OK) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
 
         retVal = sqlite3_clear_bindings(staticPressureStatement);
         if (retVal != SQLITE_OK) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
     }
 
@@ -360,19 +365,19 @@ int writeMessageToDatabase(DroneMessage *msg, unsigned resetCount) {
         retVal = sqlite3_step(pitotPressureStatement);
         if (retVal != SQLITE_OK && retVal != SQLITE_DONE) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
 
         retVal = sqlite3_reset(pitotPressureStatement);
         if (retVal != SQLITE_OK) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
 
         retVal = sqlite3_clear_bindings(pitotPressureStatement);
         if (retVal != SQLITE_OK) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
     }
 
@@ -394,19 +399,19 @@ int writeMessageToDatabase(DroneMessage *msg, unsigned resetCount) {
         retVal = sqlite3_step(gyroRawStatement);
         if (retVal != SQLITE_OK && retVal != SQLITE_DONE) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
 
         retVal = sqlite3_reset(gyroRawStatement);
         if (retVal != SQLITE_OK) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
 
         retVal = sqlite3_clear_bindings(gyroRawStatement);
         if (retVal != SQLITE_OK) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
     }
 
@@ -428,19 +433,19 @@ int writeMessageToDatabase(DroneMessage *msg, unsigned resetCount) {
         retVal = sqlite3_step(magRawStatement);
         if (retVal != SQLITE_OK && retVal != SQLITE_DONE) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
 
         retVal = sqlite3_reset(magRawStatement);
         if (retVal != SQLITE_OK) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
 
         retVal = sqlite3_clear_bindings(magRawStatement);
         if (retVal != SQLITE_OK) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
     }
 
@@ -462,19 +467,19 @@ int writeMessageToDatabase(DroneMessage *msg, unsigned resetCount) {
         retVal = sqlite3_step(accelRawStatement);
         if (retVal != SQLITE_OK && retVal != SQLITE_DONE) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
 
         retVal = sqlite3_reset(accelRawStatement);
         if (retVal != SQLITE_OK) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
 
         retVal = sqlite3_clear_bindings(accelRawStatement);
         if (retVal != SQLITE_OK) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
     }
 
@@ -494,19 +499,19 @@ int writeMessageToDatabase(DroneMessage *msg, unsigned resetCount) {
         retVal = sqlite3_step(batteryDataStatement);
         if (retVal != SQLITE_OK && retVal != SQLITE_DONE) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
 
         retVal = sqlite3_reset(batteryDataStatement);
         if (retVal != SQLITE_OK) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
 
         retVal = sqlite3_clear_bindings(batteryDataStatement);
         if (retVal != SQLITE_OK) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
     }
 
@@ -529,25 +534,25 @@ int writeMessageToDatabase(DroneMessage *msg, unsigned resetCount) {
             assert(retVal == SQLITE_OK);
         } else {
             retVal = sqlite3_bind_null(outputCommandSetStatement, 104);
-            assert(retVal = SQLITE_OK);
+            assert(retVal == SQLITE_OK);
         }
 
         retVal = sqlite3_step(outputCommandSetStatement);
         if (retVal != SQLITE_OK && retVal != SQLITE_DONE) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
 
         retVal = sqlite3_reset(outputCommandSetStatement);
         if (retVal != SQLITE_OK) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
 
         retVal = sqlite3_clear_bindings(outputCommandSetStatement);
         if (retVal != SQLITE_OK) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
     }
 
@@ -639,19 +644,19 @@ int writeMessageToDatabase(DroneMessage *msg, unsigned resetCount) {
         retVal = sqlite3_step(currentCommandStatement);
         if (retVal != SQLITE_OK && retVal != SQLITE_DONE) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
 
         retVal = sqlite3_reset(currentCommandStatement);
         if (retVal != SQLITE_OK) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
 
         retVal = sqlite3_clear_bindings(currentCommandStatement);
         if (retVal != SQLITE_OK) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
     }
 
@@ -693,19 +698,19 @@ int writeMessageToDatabase(DroneMessage *msg, unsigned resetCount) {
         retVal = sqlite3_step(homeBasesStatement);
         if (retVal != SQLITE_OK && retVal != SQLITE_DONE) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
 
         retVal = sqlite3_reset(homeBasesStatement);
         if (retVal != SQLITE_OK) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
 
         retVal = sqlite3_clear_bindings(homeBasesStatement);
         if (retVal != SQLITE_OK) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
 
     }
@@ -714,17 +719,17 @@ int writeMessageToDatabase(DroneMessage *msg, unsigned resetCount) {
         int retVal = sqlite3_step(endTransactionStatement);
         if (retVal != SQLITE_OK && retVal != SQLITE_DONE) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
 
         retVal = sqlite3_reset(endTransactionStatement);
         if (retVal != SQLITE_OK) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
+            functionReturn -= 1;
         }
     }
 
-    return 0;
+    return functionReturn;
 }
 
 int initDatabase(void) {
@@ -761,17 +766,20 @@ void deinitDatabase(void) {
     for (unsigned i = 0; i < sizeof(insertStatements)/sizeof(insertStatements[0]); i++) {
         int retVal = sqlite3_finalize(insertStatements[i]);
         assert(retVal == SQLITE_OK);
+        _unused(retVal);
     }
 
     int retVal = sqlite3_close_v2(db);
     assert(retVal == SQLITE_OK);
+    _unused(retVal);
 
     closelog();
 }
 
 //Static methods
-static int selectFlightIdCallback(void *NotUsed, int argc, char **argv, char **azColName) {
+static int selectFlightIdCallback(void *NotUsed __attribute__((unused)), int argc, char **argv, char **azColName __attribute__((unused))) {
     assert(argc == 1);
+    _unused(argc);
     flightId = atoi(argv[0]);
     assert(flightId >= 1);
     return 0;

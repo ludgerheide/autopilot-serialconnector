@@ -13,7 +13,6 @@
 
 #define _unused(x) ((void)(x))
 
-const char* databaseWriterQueueName = "/dbQueue";
 static const char *databaseFileName = "flightLogs.sqlite";
 static sqlite3 *db = NULL;
 static int flightId = -1;

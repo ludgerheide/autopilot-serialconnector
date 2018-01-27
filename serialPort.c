@@ -22,7 +22,6 @@
 #include "database.h"
 #include <syslog.h>
 #include <sys/param.h>
-#include <stdio.h>
 
 #define _unused(x) ((void)(x))
 
@@ -38,9 +37,9 @@ static const unsigned baudRate = 115200;
 static const size_t bufferSize = 4096;
 const char *navigationQueueSendName = "/navQueue-fromFlightController";
 const char *navigationQueueRecvName = "/navQueue-toFlightController";
-static const struct mq_attr navQueueAttributes = {.mq_maxmsg=1, .mq_msgsize=255};
+static const struct mq_attr navQueueAttributes = {.mq_maxmsg=1, .mq_msgsize = 8192};
 const char *databaseWriterQueueName = "/dbQueue";
-static const struct mq_attr databaseQueueAttributes = {.mq_maxmsg=10, .mq_msgsize=255};
+static const struct mq_attr databaseQueueAttributes = {.mq_maxmsg=10, .mq_msgsize = 8192};
 
 //Threading and buffer variables
 static unsigned char *buffer;
@@ -174,7 +173,7 @@ static int serialListenerThread(void *p) {
         return -1;
     }
 #else
-    port_fd = open("/home/ludger/Schreibtisch/recived3.raw.truncated", O_RDONLY);
+    port_fd = open("/home/ludger/Schreibtisch/received.raw", O_RDONLY);
     if (port_fd < 0) {
         perror("Error opening file");
     }
@@ -317,7 +316,7 @@ enum parserStatus {
 
 static int parserThread(void *p) {
     _unused(p);
-    unsigned char dataLength = 0;
+    unsigned dataLength = 0;
     unsigned char *msgBuf = NULL;
     bool newMessageAvailable = false;
     enum parserStatus status = WAITING_FOR_START;
@@ -337,8 +336,8 @@ static int parserThread(void *p) {
 
     while (true) {
         mtx_lock(&bufferMutex);
-        while ((status == WAITING_FOR_START && bufferIndex < sizeof(startMarker) + 1) ||
-               (status == RECEIVING_DATA && bufferIndex < (unsigned) dataLength + 1)) {
+        while ((status == WAITING_FOR_START && bufferIndex < sizeof(startMarker) + 2) ||
+               (status == RECEIVING_DATA && bufferIndex < dataLength + 1)) {
             struct timespec timeout;
             timespec_get(&timeout, CLOCK_MONOTONIC);
             timeout.tv_sec += 1;
@@ -352,7 +351,7 @@ static int parserThread(void *p) {
 
 
         //Parse the newly received data
-        while (status == WAITING_FOR_START && bufferIndex >= sizeof(startMarker) + 1) {
+        while (status == WAITING_FOR_START && bufferIndex >= sizeof(startMarker) + 2) {
             //Check if the first five bytes match the start marker
             bool synchronized = true;
             for (unsigned i = 0; i < sizeof(startMarker); i++) {
@@ -363,17 +362,17 @@ static int parserThread(void *p) {
             }
 
             if (synchronized) {
-                dataLength = buffer[5];
+                dataLength = (buffer[5] << 8) + (buffer[6]);
                 status = RECEIVING_DATA;
 
                 //Now move the already-received payload data (if any) to the front and set the index back to 0
-                if (bufferIndex > sizeof(startMarker) + 1) {
-                    size_t sizeToCopy = bufferIndex - (sizeof(startMarker) + 1);
-                    memmove(buffer, &buffer[sizeof(startMarker) + 1], sizeToCopy);
+                if (bufferIndex > sizeof(startMarker) + 2) {
+                    size_t sizeToCopy = bufferIndex - (sizeof(startMarker) + 2);
+                    memmove(buffer, &buffer[sizeof(startMarker) + 2], sizeToCopy);
                 }
 
-                //And set the index back to by 6
-                bufferIndex -= sizeof(startMarker) + 1;
+                //And set the index back to by 7
+                bufferIndex -= sizeof(startMarker) + 2;
             } else {
                 //Move the content of the ring buffer back one byte and set the index back by 1
                 memmove(buffer, &buffer[1], bufferIndex - 1);
@@ -381,7 +380,7 @@ static int parserThread(void *p) {
             }
         }
 
-        if (status == RECEIVING_DATA && bufferIndex >= (unsigned) dataLength + 1) {
+        if (status == RECEIVING_DATA && bufferIndex >= dataLength + 1) {
             unsigned char receivedChecksum = buffer[dataLength];
             unsigned char calculatedChecksum = calculateChecksum(buffer, dataLength);
 
@@ -395,7 +394,7 @@ static int parserThread(void *p) {
             }
 
             //Now move the already-received next message (if any) to the front and set the index back
-            if (bufferIndex > (unsigned) dataLength + 1) {
+            if (bufferIndex > dataLength + 1) {
                 size_t sizeToCopy = bufferIndex - (dataLength + 1);
                 memmove(buffer, &buffer[dataLength + 1], sizeToCopy);
                 bufferIndex -= dataLength + 1;
@@ -424,8 +423,10 @@ static int parserThread(void *p) {
                     if (retVal != 0) {
                         struct mq_attr attr;
                         mq_getattr(navQueue, &attr);
-                        syslog(LOG_WARNING, "Sending message to nav queue failed with %lu messages in queue: %s",
-                               attr.mq_curmsgs, strerror(errno));
+                        if (errno != EAGAIN) {
+                            syslog(LOG_WARNING, "Sending message to nav queue failed with %lu messages in queue: %s",
+                                   attr.mq_curmsgs, strerror(errno));
+                        }
                     }
                 }
                 free(msgBuf);

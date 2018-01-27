@@ -465,6 +465,7 @@ static int loggerThread(void *p) {
                 syslog(LOG_INFO, "Error decoding protobuf message");
             } else {
                 if (decodedMessage->timestamp < lastTimestamp) {
+                    syslog(LOG_WARNING, "Flight Controller Reset occured!");
                     resetCount++;
                 }
                 lastTimestamp = decodedMessage->timestamp;

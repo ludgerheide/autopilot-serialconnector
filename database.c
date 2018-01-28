@@ -112,14 +112,6 @@ int writeMessageToDatabase(DroneMessage *msg, unsigned resetCount) {
             assert(retVal == SQLITE_OK);
         }
 
-        if(msg->has_do_pressure_compensation) {
-            retVal = sqlite3_bind_int(flightModeStatement, 7, msg->do_pressure_compensation);
-            assert(retVal == SQLITE_OK);
-        } else {
-            retVal = sqlite3_bind_null(flightModeStatement, 7);
-            assert(retVal == SQLITE_OK);
-        }
-
         retVal = sqlite3_step(flightModeStatement);
         if (retVal != SQLITE_OK && retVal != SQLITE_DONE) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
@@ -567,7 +559,7 @@ int writeMessageToDatabase(DroneMessage *msg, unsigned resetCount) {
 
         switch (msg->current_command->vertical_command_case) {
             case DRONE_MESSAGE__COMMAND_UPDATE__VERTICAL_COMMAND_PITCH_ANGLE:
-                retVal = sqlite3_bind_double(currentCommandStatement, 110, msg->current_command->pitch_angle/64.0);
+                retVal = sqlite3_bind_int(currentCommandStatement, 110, msg->current_command->pitch_angle);
                 assert(retVal == SQLITE_OK);
                 retVal = sqlite3_bind_null(currentCommandStatement, 111);
                 assert(retVal == SQLITE_OK);

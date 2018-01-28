@@ -22,6 +22,7 @@
 #include "database.h"
 #include <syslog.h>
 #include <sys/param.h>
+#include <stdio.h>
 
 #define _unused(x) ((void)(x))
 

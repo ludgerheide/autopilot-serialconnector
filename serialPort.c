@@ -317,6 +317,7 @@ enum parserStatus {
 static int parserThread(void *p) {
     _unused(p);
     unsigned dataLength = 0;
+    unsigned noPosCount = 0;
     unsigned char *msgBuf = NULL;
     bool newMessageAvailable = false;
     enum parserStatus status = WAITING_FOR_START;
@@ -419,6 +420,7 @@ static int parserThread(void *p) {
                            attr.mq_curmsgs, strerror(errno));
                 }
                 if (decodedMessage->current_position != NULL) {
+                    noPosCount = 0;
                     retVal = mq_send(navQueue, (void *) msgBuf, dataLength, 0);
                     if (retVal != 0) {
                         struct mq_attr attr;
@@ -427,6 +429,11 @@ static int parserThread(void *p) {
                             syslog(LOG_WARNING, "Sending message to nav queue failed with %lu messages in queue: %s",
                                    attr.mq_curmsgs, strerror(errno));
                         }
+                    }
+                } else {
+                    noPosCount++;
+                    if (noPosCount > 20) {
+                        syslog(LOG_WARNING, "No position received within the last %d messages", noPosCount);
                     }
                 }
                 free(msgBuf);

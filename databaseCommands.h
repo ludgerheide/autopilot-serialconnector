@@ -22,7 +22,6 @@ const char *createDatabaseCommand = "CREATE TABLE IF NOT EXISTS flights\n"
         "\n"
         "  FlightMode             UNSIGNED INTEGER NOT NULL,\n"
         "  SeaLevelPressure       FLOAT,\n"
-        "  DoPressureCompensation BOOLEAN,\n"
         "  PRIMARY KEY (FlightId, ResetCount, Timestamp)\n"
         ");\n"
         "\n"
@@ -172,7 +171,7 @@ const char *createDatabaseCommand = "CREATE TABLE IF NOT EXISTS flights\n"
         "  ResetCount  UNSIGNED INTEGER NOT NULL,\n"
         "  Timestamp   UNSIGNED INTEGER NOT NULL,\n"
         "\n"
-        "  PitchAngle  FLOAT,\n"
+        "  PitchAngle  INTEGER,\n"
         "  Altitude    FLOAT,\n"
         "  RateOfClimb FLOAT,\n"
         "\n"
@@ -201,11 +200,11 @@ const char *createDatabaseCommand = "CREATE TABLE IF NOT EXISTS flights\n"
         ");";
 
 const char *connectionPragmaCommand = "PRAGMA journal_mode = WAL;\n"
-        "PRAGMA synchronous = NORMAL;";
+        "PRAGMA synchronous = OFF;";
 
 const char *startNewFlightCommand = "INSERT INTO flights (start) VALUES (datetime('now'));";
 
-const char *flightModeCommand = "INSERT INTO flightMode (FlightId, ResetCount, Timestamp, FlightMode, SeaLevelPressure, DoPressureCompensation) VALUES (?999, ?998, ?1, ?2, ?17, ?7);";
+const char *flightModeCommand = "INSERT INTO flightMode (FlightId, ResetCount, Timestamp, FlightMode, SeaLevelPressure) VALUES (?999, ?998, ?1, ?2, ?17);";
 
 const char *gpsVelocityCommand = "INSERT INTO GpsVelocity (FlightId, ResetCount, Timestamp, Speed, CourseOverGround) VALUES (?999, ?998, ?30, ?31, ?32);";
 
@@ -235,8 +234,8 @@ const char *currentCommandCommand = "INSERT INTO CurrentCommand (FlightId, Reset
 
 const char *homeBasesCommand = "INSERT INTO HomeBases (FlightId, ResetCount, Timestamp, Latitude, Longitude, Altitude, OrbitRadius, OrbitUntilTargetAltitude, OrbitClockwise) VALUES (?999, ?998,?200, ?201, ?202, ?203, ?204, ?205, ?206);";
 
-const char *beginTransactionCommand = "BEGIN TRANSACTION";
+const char *beginTransactionCommand = "BEGIN TRANSACTION;";
 
-const char *endTransactionCommand = "END TRANSACTION";
+const char *endTransactionCommand = "END TRANSACTION;";
 
 #endif //FLIGHTMANAGER_DATABASECOMMANDS_H

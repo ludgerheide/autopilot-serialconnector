@@ -42,4 +42,4 @@ add_executable(flightManager main.c protobuf/communicationProtocol.pb-c.c serial
 add_dependencies(flightManager createProtobuf)
 find_library (PROTOBUF-C protobuf-c ${CROSS_TOOLCHAIN_PATH}/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/arm-linux-gnueabihf/sysroot/usr/lib/arm-linux-gnueabihf)
 find_library(SQLITE3 sqlite3 ${CROSS_TOOLCHAIN_PATH}/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/arm-linux-gnueabihf/sysroot/usr/lib/arm-linux-gnueabihf)
-target_link_libraries(flightManager ${PROTOBUF-C} m libserialport pthread ${SQLITE3})
+target_link_libraries(flightManager ${PROTOBUF-C} m libserialport pthread ${SQLITE3} rt)

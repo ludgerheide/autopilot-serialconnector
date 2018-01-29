@@ -21,6 +21,9 @@ SET(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
 SET(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 
 add_definitions(-Wall -Wextra)
+add_definitions(-DSQLITE_OMIT_LOAD_EXTENSION)
+add_definitions(-DSQLITE_ENABLE_BATCH_ATOMIC_WRITE)
+add_definitions(-DSQLITE_THREADSAFE=0)
 
 cmake_minimum_required(VERSION 3.0)
 
@@ -38,8 +41,8 @@ add_library(libserialport STATIC  libserialport/serialport.c libserialport/linux
 target_include_directories(libserialport PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/libserialport)
 
 #The main executable
-add_executable(flightManager main.c protobuf/communicationProtocol.pb-c.c serialPort.c database.c database.h databaseCommands.h)
+add_executable(flightManager main.c protobuf/communicationProtocol.pb-c.c serialPort.c database.c sqlite/sqlite3.c)
 add_dependencies(flightManager createProtobuf)
 find_library (PROTOBUF-C protobuf-c ${CROSS_TOOLCHAIN_PATH}/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/arm-linux-gnueabihf/sysroot/usr/lib/arm-linux-gnueabihf)
-find_library(SQLITE3 sqlite3 ${CROSS_TOOLCHAIN_PATH}/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/arm-linux-gnueabihf/sysroot/usr/lib/arm-linux-gnueabihf)
-target_link_libraries(flightManager ${PROTOBUF-C} m libserialport pthread ${SQLITE3} rt)
+#find_library(SQLITE3 sqlite3 ${CROSS_TOOLCHAIN_PATH}/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/arm-linux-gnueabihf/sysroot/usr/lib/arm-linux-gnueabihf)
+target_link_libraries(flightManager ${PROTOBUF-C} m libserialport pthread rt)

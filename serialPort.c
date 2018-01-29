@@ -38,9 +38,9 @@ static const unsigned baudRate = 115200;
 static const size_t bufferSize = 4096;
 const char *navigationQueueSendName = "/navQueue-fromFlightController";
 const char *navigationQueueRecvName = "/navQueue-toFlightController";
-static const struct mq_attr navQueueAttributes = {.mq_maxmsg=1, .mq_msgsize = 8192};
+static const struct mq_attr navQueueAttributes = {.mq_maxmsg=1, .mq_msgsize = 2048};
 const char *databaseWriterQueueName = "/dbQueue";
-static const struct mq_attr databaseQueueAttributes = {.mq_maxmsg=10, .mq_msgsize = 8192};
+static const struct mq_attr databaseQueueAttributes = {.mq_maxmsg=10, .mq_msgsize = 2048};
 
 //Threading and buffer variables
 static unsigned char *buffer;
@@ -514,7 +514,7 @@ static unsigned char calculateChecksum(const unsigned char *buf, unsigned len) {
 
 static void quitHandler() {
     //Closing the port will force a read error, making sure we close down nicely...
-    printf("Ctrl-C pressed, signaling threads to exit...");
+    printf("Ctrl-C pressed, signaling threads to exit...\n");
     readerThreadShouldExit = true;
     writerThreadShouldExit = true;
     parserThreadShouldExit = true;

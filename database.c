@@ -17,9 +17,16 @@ static const char *databaseFileName = "flightLogs.sqlite";
 static sqlite3 *db = NULL;
 static int flightId = -1;
 
-static sqlite3_stmt *flightModeStatement, *gpsVelocityStatement, *airVelocityStatement, *positionStatement, *altitudeStatement,  *attitudeStatement, *staticPressureStatement, *pitotPressureStatement, *gyroRawStatement, *magRawStatement, *accelRawStatement, *batteryDataStatement, *outputCommandSetStatement, *currentCommandStatement, *homeBasesStatement, *beginTransactionStatement, *endTransactionStatement;
+static sqlite3_stmt *flightModeStatement, *gpsVelocityStatement, *airVelocityStatement, *positionStatement, *altitudeStatement, *attitudeStatement, *staticPressureStatement, *pitotPressureStatement, *gyroRawStatement, *magRawStatement, *accelRawStatement, *batteryDataStatement, *outputCommandSetStatement, *currentCommandStatement, *homeBasesStatement, *beginTransactionStatement, *endTransactionStatement, *rollbackTransactionStatement;
 
 //Static method definitions
+static int messageBeginTransaction(void);
+
+static int messageWriteData(DroneMessage *msg, unsigned resetCount);
+
+static int messageEndTransaction(void);
+
+static int messageRollbackTransaction(void);
 static int selectFlightIdCallback(void *NotUsed, int argc, char **argv, char **azColName);
 static int initPreparedStatements(void);
 
@@ -73,22 +80,54 @@ int endFlight(void) {
     return 0;
 }
 
+//Writes a message to the database. Return codes:
+// < -1: Critical failure
+// 0: Success
+// 1: Non-critical failure
 int writeMessageToDatabase(DroneMessage *msg, unsigned resetCount) {
-    int functionReturn = 0;
-
-    {//Start the transaction
-        int retVal = sqlite3_step(beginTransactionStatement);
-        if (retVal != SQLITE_OK && retVal != SQLITE_DONE) {
-            syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
-        }
-
-        retVal = sqlite3_reset(beginTransactionStatement);
-        if (retVal != SQLITE_OK) {
-            syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            return -1;
-        }
+    //Begin a transaction, abort if it fails
+    int transactionBegan = messageBeginTransaction();
+    if (transactionBegan != 0) {
+        syslog(LOG_ERR, "Transaction could not be started (%s at %i).", __FILE__, __LINE__);
+        return -1;
     }
+
+    //Write the data, rollback in case of error, commit in case of success
+    int dataWriteReturn = messageWriteData(msg, resetCount);
+    if (dataWriteReturn != 0) {
+        syslog(LOG_ERR, "Writing data failed, trying rollback and reset (%s at %i).", __FILE__, __LINE__);
+        int rollbackSuccess = messageRollbackTransaction();
+        if (rollbackSuccess == 0) {
+            syslog(LOG_ERR, "Rollback successful (%s at %i).", __FILE__, __LINE__);
+            return 1;
+        } else {
+            syslog(LOG_ERR, "Rollback failed (%s at %i).", __FILE__, __LINE__);
+            return dataWriteReturn;
+        }
+    } else {
+        int transactionEnded = messageEndTransaction();
+        return transactionEnded;
+    }
+}
+
+static int messageBeginTransaction(void) {
+    //Start the transaction
+    int retVal = sqlite3_step(beginTransactionStatement);
+    if (retVal != SQLITE_OK && retVal != SQLITE_DONE) {
+        syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
+        return -1;
+    }
+
+    retVal = sqlite3_reset(beginTransactionStatement);
+    if (retVal != SQLITE_OK) {
+        syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
+        return -1;
+    }
+    return 0;
+}
+
+static int messageWriteData(DroneMessage *msg, unsigned resetCount) {
+    int functionReturn = 0;
 
     //timestamp is always set, slp doPressorCompensation maybe.
     {
@@ -103,7 +142,7 @@ int writeMessageToDatabase(DroneMessage *msg, unsigned resetCount) {
         assert(retVal == SQLITE_OK);
         retVal = sqlite3_bind_int(flightModeStatement, 2, (int)msg->current_mode);
         assert(retVal == SQLITE_OK);
-        
+
         if(msg->has_sea_level_pressure) {
             retVal = sqlite3_bind_double(flightModeStatement, 17, msg->sea_level_pressure);
             assert(retVal == SQLITE_OK);
@@ -703,24 +742,40 @@ int writeMessageToDatabase(DroneMessage *msg, unsigned resetCount) {
             syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
             functionReturn -= 1;
         }
-
     }
-
-    {//end the transaction
-        int retVal = sqlite3_step(endTransactionStatement);
-        if (retVal != SQLITE_OK && retVal != SQLITE_DONE) {
-            syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            functionReturn -= 1;
-        }
-
-        retVal = sqlite3_reset(endTransactionStatement);
-        if (retVal != SQLITE_OK) {
-            syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
-            functionReturn -= 1;
-        }
-    }
-
     return functionReturn;
+}
+
+static int messageEndTransaction(void) {
+    //end the transaction
+    int retVal = sqlite3_step(endTransactionStatement);
+    if (retVal != SQLITE_OK && retVal != SQLITE_DONE) {
+        syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
+        return -1;
+    }
+
+    retVal = sqlite3_reset(endTransactionStatement);
+    if (retVal != SQLITE_OK) {
+        syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
+        return -1;
+    }
+    return 0;
+}
+
+static int messageRollbackTransaction(void) {
+    //Try to rollback the transaction
+    int retVal = sqlite3_step(rollbackTransactionStatement);
+    if (retVal != SQLITE_OK && retVal != SQLITE_DONE) {
+        syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
+        return -1;
+    }
+
+    retVal = sqlite3_reset(rollbackTransactionStatement);
+    if (retVal != SQLITE_OK) {
+        syslog(LOG_ERR, "Fail in %s at %i: %s", __FILE__, __LINE__, sqlite3_errmsg(db));
+        return -1;
+    }
+    return 0;
 }
 
 int initDatabase(void) {
@@ -752,7 +807,13 @@ int initDatabase(void) {
 }
 
 void deinitDatabase(void) {
-    sqlite3_stmt* insertStatements[] = {flightModeStatement, gpsVelocityStatement, airVelocityStatement, positionStatement, altitudeStatement, attitudeStatement, staticPressureStatement, pitotPressureStatement, gyroRawStatement, magRawStatement, accelRawStatement, batteryDataStatement, outputCommandSetStatement, currentCommandStatement, homeBasesStatement, beginTransactionStatement, endTransactionStatement};
+    sqlite3_stmt *insertStatements[] = {flightModeStatement, gpsVelocityStatement, airVelocityStatement,
+                                        positionStatement, altitudeStatement, attitudeStatement,
+                                        staticPressureStatement, pitotPressureStatement, gyroRawStatement,
+                                        magRawStatement, accelRawStatement, batteryDataStatement,
+                                        outputCommandSetStatement, currentCommandStatement, homeBasesStatement,
+                                        beginTransactionStatement, endTransactionStatement,
+                                        rollbackTransactionStatement};
 
     for (unsigned i = 0; i < sizeof(insertStatements)/sizeof(insertStatements[0]); i++) {
         int retVal = sqlite3_finalize(insertStatements[i]);
@@ -777,9 +838,19 @@ static int selectFlightIdCallback(void *NotUsed __attribute__((unused)), int arg
 }
 
 static int initPreparedStatements(void) {
-    const char* insertCommands[] = {flightModeCommand, gpsVelocityCommand, airVelocityCommand, positionCommand, altitudeCommand, attitudeCommand, staticPressureCommand, pitotPressureCommand, gyroRawCommand, magRawCommand, accelRawCommand, batteryDataCommand, outputCommandSetCommand, currentCommandCommand, homeBasesCommand, beginTransactionCommand, endTransactionCommand};
+    const char *insertCommands[] = {flightModeCommand, gpsVelocityCommand, airVelocityCommand, positionCommand,
+                                    altitudeCommand, attitudeCommand, staticPressureCommand, pitotPressureCommand,
+                                    gyroRawCommand, magRawCommand, accelRawCommand, batteryDataCommand,
+                                    outputCommandSetCommand, currentCommandCommand, homeBasesCommand,
+                                    beginTransactionCommand, endTransactionCommand, rollbackTransactionCommand};
 
-    sqlite3_stmt** insertStatements[] = {&flightModeStatement, &gpsVelocityStatement, &airVelocityStatement, &positionStatement, &altitudeStatement, &attitudeStatement, &staticPressureStatement, &pitotPressureStatement, &gyroRawStatement, &magRawStatement, &accelRawStatement, &batteryDataStatement, &outputCommandSetStatement, &currentCommandStatement, &homeBasesStatement, &beginTransactionStatement, &endTransactionStatement};
+    sqlite3_stmt **insertStatements[] = {&flightModeStatement, &gpsVelocityStatement, &airVelocityStatement,
+                                         &positionStatement, &altitudeStatement, &attitudeStatement,
+                                         &staticPressureStatement, &pitotPressureStatement, &gyroRawStatement,
+                                         &magRawStatement, &accelRawStatement, &batteryDataStatement,
+                                         &outputCommandSetStatement, &currentCommandStatement, &homeBasesStatement,
+                                         &beginTransactionStatement, &endTransactionStatement,
+                                         &rollbackTransactionStatement};
 
     assert(sizeof(insertStatements) == sizeof(insertCommands));
 

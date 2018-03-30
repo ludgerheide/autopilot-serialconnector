@@ -40,7 +40,7 @@ const char *navigationQueueSendName = "/navQueue-fromFlightController";
 const char *navigationQueueRecvName = "/navQueue-toFlightController";
 static const struct mq_attr navQueueAttributes = {.mq_maxmsg=1, .mq_msgsize = 2048};
 const char *databaseWriterQueueName = "/dbQueue";
-static const struct mq_attr databaseQueueAttributes = {.mq_maxmsg=10, .mq_msgsize = 2048};
+static const struct mq_attr databaseQueueAttributes = {.mq_maxmsg=100, .mq_msgsize = 2048};
 
 //Threading and buffer variables
 static unsigned char *buffer;
@@ -434,7 +434,7 @@ static int parserThread(void *p) {
                 } else {
                     noPosCount++;
                     if (noPosCount > 20) {
-                        syslog(LOG_WARNING, "No position received within the last %d messages", noPosCount);
+                        //syslog(LOG_WARNING, "No position received within the last %d messages", noPosCount);
                     }
                 }
                 free(msgBuf);
@@ -478,7 +478,22 @@ static int loggerThread(void *p) {
                     resetCount++;
                 }
                 lastTimestamp = decodedMessage->timestamp;
-                writeMessageToDatabase(decodedMessage, resetCount);
+                int success = writeMessageToDatabase(decodedMessage, resetCount);
+                if (success < 0) {
+                    //We encountered a critical failure while writing the message out to the database
+                    syslog(LOG_ERR, "Critical failure while writing to database!");
+
+                    //Try to reinitialize the database
+                    //If it fails, we close the logger thread to prevent constant initialization eating CPU but don't
+                    //kill the whole application in case the plane is doint something important
+                    deinitDatabase();
+                    int initSuccess = initDatabase();
+                    if (initSuccess != 0) {
+                        syslog(LOG_ERR, "Reinitializing database failed!");
+                        loggerThreadShouldExit = true;
+                    }
+                }
+
                 drone_message__free_unpacked(decodedMessage, NULL);
             }
         } else {

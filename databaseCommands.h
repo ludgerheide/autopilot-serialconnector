@@ -200,7 +200,7 @@ const char *createDatabaseCommand = "CREATE TABLE IF NOT EXISTS flights\n"
         ");";
 
 const char *connectionPragmaCommand = "PRAGMA journal_mode = WAL;\n"
-        "PRAGMA synchronous = OFF;";
+        "PRAGMA synchronous = NORMAL;";
 
 const char *startNewFlightCommand = "INSERT INTO flights (start) VALUES (datetime('now'));";
 
@@ -237,5 +237,7 @@ const char *homeBasesCommand = "INSERT INTO HomeBases (FlightId, ResetCount, Tim
 const char *beginTransactionCommand = "BEGIN TRANSACTION;";
 
 const char *endTransactionCommand = "END TRANSACTION;";
+
+const char *rollbackTransactionCommand = "ROLLBACK TRANSACTION;";
 
 #endif //FLIGHTMANAGER_DATABASECOMMANDS_H

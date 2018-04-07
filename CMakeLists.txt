@@ -1,4 +1,4 @@
-project(flightManager)
+project(serialConnector)
 
 set(CMAKE_C_STANDARD 11)
 
@@ -16,6 +16,6 @@ add_library(libserialport STATIC  libserialport/serialport.c libserialport/linux
 target_include_directories(libserialport PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/libserialport)
 
 #The main executable
-add_executable(flightManager main.c protobuf/communicationProtocol.pb-c.c serialPort.c database.c)
-add_dependencies(flightManager createProtobuf)
-target_link_libraries(flightManager protobuf-c m libserialport pthread rt sqlite3)
+add_executable(serialConnector main.c protobuf/communicationProtocol.pb-c.c serialPort.c database.c)
+add_dependencies(serialConnector createProtobuf)
+target_link_libraries(serialConnector protobuf-c m libserialport pthread rt sqlite3)

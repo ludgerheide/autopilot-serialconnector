@@ -26,6 +26,10 @@
 
 #define _unused(x) ((void)(x))
 
+#ifdef __x86_64__
+#define ARCH_X64
+#endif
+
 struct msgInfo {
     DroneMessage *msg;
     unsigned resetCount;
@@ -33,14 +37,19 @@ struct msgInfo {
 
 //Constants
 static const char startMarker[5] = {'s', 't', 'a', 'r', 't'};
-static const char *serialPortName = "/dev/ttyAMA0";
+//Use the USB serial port on the desktop PC
+#ifdef ARCH_X64
+static const char *serialPortName = "/dev/ttyUSB0";
+#else
+static const char *serialPortName = "/dev/serial0";
+#endif
 static const unsigned baudRate = 115200;
 static const size_t bufferSize = 4096;
 const char *navigationQueueSendName = "/navQueue-fromFlightController";
 const char *navigationQueueRecvName = "/navQueue-toFlightController";
 static const struct mq_attr navQueueAttributes = {.mq_maxmsg=1, .mq_msgsize = 2048};
 const char *databaseWriterQueueName = "/dbQueue";
-static const struct mq_attr databaseQueueAttributes = {.mq_maxmsg=100, .mq_msgsize = 2048};
+static const struct mq_attr databaseQueueAttributes = {.mq_maxmsg=10, .mq_msgsize = 2048};
 
 //Threading and buffer variables
 static unsigned char *buffer;
@@ -68,7 +77,7 @@ static unsigned char calculateChecksum(const unsigned char *buf, unsigned len);
 
 static void quitHandler();
 
-void initSerial() {
+void init() {
 
     setlogmask(LOG_UPTO (LOG_DEBUG));
     openlog("flightManager-serial", LOG_PERROR | LOG_PID | LOG_CONS, LOG_USER);
@@ -105,7 +114,11 @@ void initSerial() {
     thrd_detach(threads[0]);
 
     signal(SIGINT, quitHandler);
+    signal(SIGKILL, quitHandler);
+    signal(SIGTERM, quitHandler);
+    signal(SIGHUP, quitHandler);
 
+    //Wait until th listener thread dies
     thrd_join(threads[1], NULL);
 
     //Signal the parser thread to exit and wake it up

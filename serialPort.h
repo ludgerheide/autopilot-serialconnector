@@ -8,7 +8,7 @@
 
 extern const char* navigationQueueName;
 
-void initSerial();
+void init();
 
 void addSerialSubscriber();
 

@@ -45,6 +45,8 @@ static const char *serialPortName = "/dev/serial0";
 #endif
 static const unsigned baudRate = 115200;
 static const size_t bufferSize = 4096;
+
+//Queue Sspecifications
 const char *navigationQueueSendName = "/navQueue-fromFlightController";
 const char *navigationQueueRecvName = "/navQueue-toFlightController";
 static const struct mq_attr navQueueAttributes = {.mq_maxmsg=1, .mq_msgsize = 2048};
@@ -62,6 +64,9 @@ _Atomic bool loggerThreadShouldExit;
 _Atomic bool writerThreadShouldExit;
 _Atomic bool readerThreadShouldExit;
 
+//This tracks if we have already asked to quit once and force-quits.
+bool askedToQuit = false;
+
 //Static method definitions
 static struct sp_port *setupSerialPort();
 
@@ -76,6 +81,8 @@ static int loggerThread(void *p);
 static unsigned char calculateChecksum(const unsigned char *buf, unsigned len);
 
 static void quitHandler();
+
+static void reloadHandler();
 
 void init() {
 
@@ -114,9 +121,8 @@ void init() {
     thrd_detach(threads[0]);
 
     signal(SIGINT, quitHandler);
-    signal(SIGKILL, quitHandler);
     signal(SIGTERM, quitHandler);
-    signal(SIGHUP, quitHandler);
+    signal(SIGHUP, reloadHandler);
 
     //Wait until th listener thread dies
     thrd_join(threads[1], NULL);
@@ -541,10 +547,23 @@ static unsigned char calculateChecksum(const unsigned char *buf, unsigned len) {
 }
 
 static void quitHandler() {
-    //Closing the port will force a read error, making sure we close down nicely...
-    printf("Ctrl-C pressed, signaling threads to exit...\n");
+    if (askedToQuit) {
+        printf("Force-quitting.\n");
+        exit(-1);
+    } else {
+        askedToQuit = true;
+
+        //Closing the port will force a read error, making sure we close down nicely...
+        printf("Ctrl-C pressed, signaling threads to exit...\n");
+        printf("Press again to force-quit...\n");
+    }
     readerThreadShouldExit = true;
     writerThreadShouldExit = true;
     parserThreadShouldExit = true;
     loggerThreadShouldExit = true;
+}
+
+static void reloadHandler() {
+    syslog(LOG_INFO, "SIGHUP Received, starting a new flight...");
+    startNewFlight();
 }

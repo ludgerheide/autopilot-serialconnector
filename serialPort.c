@@ -51,7 +51,7 @@ const char *navigationQueueSendName = "/navQueue-fromFlightController";
 const char *navigationQueueRecvName = "/navQueue-toFlightController";
 static const struct mq_attr navQueueAttributes = {.mq_maxmsg=1, .mq_msgsize = 2048};
 const char *databaseWriterQueueName = "/dbQueue";
-static const struct mq_attr databaseQueueAttributes = {.mq_maxmsg=10, .mq_msgsize = 2048};
+static const struct mq_attr databaseQueueAttributes = {.mq_maxmsg=256, .mq_msgsize = 2048};
 
 //Threading and buffer variables
 static unsigned char *buffer;

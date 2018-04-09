@@ -2,6 +2,9 @@
 // Created by ludger on 14.01.18.
 //
 
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <signal.h>
 #include <fcntl.h>           /* For O_* constants */
 #include <mqueue.h>
 
@@ -272,7 +275,7 @@ static int serialWriterThread(void *p) {
 
     while (true) {
         struct timespec timeout;
-        timespec_get(&timeout, CLOCK_MONOTONIC);
+        clock_gettime(CLOCK_MONOTONIC, &timeout);
         timeout.tv_sec += 1;
         int retVal = mq_timedreceive(navQueue, msgBuf, msgBufSize, NULL, &timeout);
         if (retVal > 0) {
@@ -360,7 +363,7 @@ static int parserThread(void *p) {
         while ((status == WAITING_FOR_START && bufferIndex < sizeof(startMarker) + 2) ||
                (status == RECEIVING_DATA && bufferIndex < dataLength + 1)) {
             struct timespec timeout;
-            timespec_get(&timeout, CLOCK_MONOTONIC);
+            clock_gettime(CLOCK_MONOTONIC, &timeout);
             timeout.tv_sec += 1;
             cnd_timedwait(&bufferCondition, &bufferMutex, &timeout);
 
@@ -483,7 +486,7 @@ static int loggerThread(void *p) {
 
     while (true) {
         struct timespec timeout;
-        timespec_get(&timeout, CLOCK_MONOTONIC);
+        clock_gettime(CLOCK_MONOTONIC, &timeout);
         timeout.tv_sec += 1;
         int retVal = mq_timedreceive(databaseQueue, msgBuf, msgBufSize, NULL, &timeout);
         if (retVal > 0) {

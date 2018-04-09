@@ -19,3 +19,5 @@ target_include_directories(libserialport PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/libs
 add_executable(serialConnector main.c protobuf/communicationProtocol.pb-c.c serialPort.c database.c)
 add_dependencies(serialConnector createProtobuf)
 target_link_libraries(serialConnector protobuf-c m libserialport pthread rt sqlite3)
+
+install(TARGETS serialConnector DESTINATION bin)

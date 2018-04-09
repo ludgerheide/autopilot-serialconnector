@@ -200,7 +200,7 @@ const char *createDatabaseCommand = "CREATE TABLE IF NOT EXISTS flights\n"
         ");";
 
 const char *connectionPragmaCommand = "PRAGMA journal_mode = WAL;\n"
-        "PRAGMA synchronous = NORMAL;";
+        "PRAGMA synchronous = OFF;";
 
 const char *startNewFlightCommand = "INSERT INTO flights (start) VALUES (datetime('now'));";
 
